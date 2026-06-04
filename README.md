@@ -1,6 +1,6 @@
-# Hermes Collabora Integration
+# Hermes Collabora Extension
 
-A powerful integration that brings the **Collabora Online Development Edition (CODE)** directly into your Hermes WebUI. This allows you to seamlessly view and edit Office documents (`.docx`, `.xlsx`, `.pptx`) and `.csv` files natively within your workspace.
+A powerful extension that brings the **Collabora Online Development Edition (CODE)** directly into your Hermes WebUI. This allows you to seamlessly view and edit Office documents (`.docx`, `.xlsx`, `.pptx`) and `.csv` files natively within your workspace.
 
 ![Collabora Preview](./assets/preview.png)
 
@@ -24,7 +24,7 @@ A powerful integration that brings the **Collabora Online Development Edition (C
 
 ### 1. Set up the Backend Services
 
-This integration requires a Collabora CODE server and a WOPI server bridge. We've provided a self-contained Docker Compose file to spin both up.
+This extension requires a Collabora CODE server and a WOPI server bridge. We've provided a self-contained Docker Compose file to spin both up.
 
 1. Ensure the `wopi_server.py` and `docker-compose.collabora.yml` files are in your Hermes project root (e.g., `/home/abuhafi/Project/hermesDIL`).
 2. Start the backend services:
@@ -60,6 +60,12 @@ The frontend logic is contained in a single JavaScript extension file.
 - **Full Width:** Click the `⛶ Full Width` button in the header bar to maximize the document. Click `◧ Split View` to restore.
 - **Native Editor:** Click `↺ Native Editor` to bypass Collabora and open the file using Hermes's default text viewer (useful for raw CSV edits).
 - **Close:** Click `✕ Close` to dismiss the preview pane.
+
+## AI Installation Prompt
+
+Want to install this extension automatically? Just copy and paste this prompt into your Hermes chat and let your AI agent do the heavy lifting:
+
+> "@Hermes, please install the Hermes Collabora Extension for me. Download `docker-compose.collabora.yml` and `wopi_server.py` from this repository into my current project root. Then, copy `collabora-viewer.js` to my `~/.hermes/extensions/` directory. Once the files are in place, spin up the backend by running `docker compose -f docker-compose.collabora.yml up -d`. Let me know when it's done so I can reload the page!"
 
 ## Architecture
 
