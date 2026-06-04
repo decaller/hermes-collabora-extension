@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "libreoffice-mcp": {
+      "command": "docker",
+      "args": [
+        "exec",
+        "-i",
+        "libreoffice-mcp",
+        "fastmcp",
+        "run",
+        "/app/libreoffice.py"
+      ]
+    }
+  }
+}

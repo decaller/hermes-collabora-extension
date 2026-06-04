@@ -23,26 +23,16 @@
           - tar
         state: present
 
-    - name: Add Docker GPG apt Key
-      apt_key:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        state: present
+    - name: Download Docker install script
+      get_url:
+        url: https://get.docker.com
+        dest: /tmp/get-docker.sh
+        mode: '0755'
 
-    - name: Add Docker Repository
-      apt_repository:
-        repo: deb https://download.docker.com/linux/ubuntu focal stable
-        state: present
-
-    - name: Install Docker and Docker Compose
-      apt:
-        name:
-          - docker-ce
-          - docker-ce-cli
-          - containerd.io
-          - docker-buildx-plugin
-          - docker-compose-plugin
-        state: present
-        update_cache: yes
+    - name: Run Docker install script
+      command: /tmp/get-docker.sh
+      args:
+        creates: /usr/bin/docker
 
     - name: Ensure Docker service is running and enabled
       service:
@@ -62,9 +52,9 @@
     - name: Download and extract Headless Dropbox Daemon
       unarchive:
         src: "https://www.dropbox.com/download?plat=lnx.x86_64"
-        dest: "/home/{{ dropbox_user }}/"
+        dest: "{{ ansible_env.HOME }}/"
         remote_src: yes
-        creates: "/home/{{ dropbox_user }}/.dropbox-dist"
+        creates: "{{ ansible_env.HOME }}/.dropbox-dist"
       become: yes
       become_user: "{{ dropbox_user }}"
 
@@ -84,7 +74,7 @@
 
           [Service]
           Type=simple
-          ExecStart=/home/%i/.dropbox-dist/dropboxd
+          ExecStart=/root/.dropbox-dist/dropboxd
           Restart=on-failure
           User=%i
 
