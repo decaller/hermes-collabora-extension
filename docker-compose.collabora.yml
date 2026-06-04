@@ -1,0 +1,43 @@
+---
+services:
+  wopi-server:
+    image: python:3.11-alpine
+    container_name: wopi-server
+    restart: unless-stopped
+    volumes:
+      - /home/abuhafi/Project:/workspace
+      - ./wopi_server.py:/wopi_server.py
+    command: python3 /wopi_server.py
+    ports:
+      - "8880:8880"
+    networks:
+      - hermes-net
+
+  collabora:
+    image: collabora/code:latest
+    container_name: collabora
+    restart: unless-stopped
+    ports:
+      - "9980:9980"
+    environment:
+      aliasgroups: "host=http://localhost:8787|host=http://hermes-webui:8787"
+      dictionaries: "en_US id_ID"
+      username: "admin"
+      password: "changeme_admin_pass"
+      DONT_GEN_SSL_CERT: "1"
+      extra_params: >-
+        --o:ssl.enable=false
+        --o:ssl.termination=false
+        --o:net.frame_ancestors="http://localhost:8787 http://hermes-webui:8787"
+        --o:logging.level=warning
+        --o:server_name=localhost:9980
+        --o:storage.wopi.host[0]=wopi-server
+        --o:storage.wopi.alias_groups.mode=first
+    cap_add:
+      - MKNOD
+    networks:
+      - hermes-net
+
+networks:
+  hermes-net:
+    external: true
