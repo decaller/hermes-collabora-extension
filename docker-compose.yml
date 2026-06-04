@@ -133,10 +133,9 @@ services:
       - ${WORKSPACE_DIR:-~/Project}:/workspace:ro
 
       # ── Extension files mount ──────────────────────────────
-      # Maps ~/.hermes/extensions (host) → /extensions (container)
-      # The WebUI server serves files from /extensions at /extensions/*.
+      # Maps the local extension file into the container
       # ──────────────────────────────────────────────────────
-      - ${HERMES_DATA_DIR:-~/.hermes}/extensions:/extensions:ro
+      - ./hermes-collabora-extension/collabora-viewer.js:/extensions/collabora-viewer.js:ro
 
     networks:
       - hermes-net
@@ -154,6 +153,71 @@ services:
           memory: 1G
           cpus: "1.0"
 
+
+  # ----------------------------------------------------------
+  # WOPI Server — Python backend for Collabora filesystem access
+  # ----------------------------------------------------------
+  wopi-server:
+    image: python:3.11-alpine
+    container_name: wopi-server
+    restart: unless-stopped
+    volumes:
+      - ${WORKSPACE_DIR:-~/Project}:/workspace
+      - ./hermes-collabora-extension/wopi_server.py:/wopi_server.py
+    command: python3 /wopi_server.py
+    ports:
+      - "8880:8880"
+    networks:
+      - hermes-net
+
+  # ----------------------------------------------------------
+  # Collabora CODE — LibreOffice online document editor
+  # ----------------------------------------------------------
+  collabora:
+    image: collabora/code:latest
+    container_name: collabora
+    restart: unless-stopped
+    ports:
+      - "9980:9980"
+    environment:
+      aliasgroups: "host=http://localhost:8787|host=http://hermes-webui:8787"
+      dictionaries: "en_US id_ID"
+      username: "admin"
+      password: "changeme_admin_pass"
+      DONT_GEN_SSL_CERT: "1"
+      extra_params: >-
+        --o:ssl.enable=false
+        --o:ssl.termination=false
+        --o:net.frame_ancestors="http://localhost:8787 http://hermes-webui:8787"
+        --o:logging.level=warning
+        --o:server_name=localhost:9980
+        --o:storage.wopi.host[0]=wopi-server
+        --o:storage.wopi.alias_groups.mode=first
+    cap_add:
+      - MKNOD
+    networks:
+      - hermes-net
+
+  # ----------------------------------------------------------
+  # LibreOffice MCP Server — AI agent connector for LibreOffice
+  # ----------------------------------------------------------
+  libreoffice-mcp:
+    build:
+      context: ./libreoffice-mcp
+    container_name: libreoffice-mcp
+    restart: unless-stopped
+    shm_size: '2gb'
+    volumes:
+      - ${WORKSPACE_DIR:-~/Project}:/workspace
+      - /usr/share/fonts:/usr/share/fonts:ro
+    ports:
+      - "8000:8000"
+    networks:
+      - hermes-net
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
 # ----------------------------------------------------------
 # Networks

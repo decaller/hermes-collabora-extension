@@ -1,0 +1,109 @@
+---
+- name: Setup Hermes Test Server with Docker and Headless Dropbox
+  hosts: all
+  become: yes
+  vars:
+    dropbox_user: "{{ ansible_user_id }}"
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install prerequisite packages for Docker
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - python3
+          - wget
+          - tar
+        state: present
+
+    - name: Add Docker GPG apt Key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker Repository
+      apt_repository:
+        repo: deb https://download.docker.com/linux/ubuntu focal stable
+        state: present
+
+    - name: Install Docker and Docker Compose
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Ensure Docker service is running and enabled
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add current user to docker group
+      user:
+        name: "{{ dropbox_user }}"
+        groups: docker
+        append: yes
+
+    # ---------------------------------------------------------
+    # Headless Dropbox Installation
+    # ---------------------------------------------------------
+    - name: Download and extract Headless Dropbox Daemon
+      unarchive:
+        src: "https://www.dropbox.com/download?plat=lnx.x86_64"
+        dest: "/home/{{ dropbox_user }}/"
+        remote_src: yes
+        creates: "/home/{{ dropbox_user }}/.dropbox-dist"
+      become: yes
+      become_user: "{{ dropbox_user }}"
+
+    - name: Download Dropbox CLI management script
+      get_url:
+        url: "https://www.dropbox.com/download?dl=packages/dropbox.py"
+        dest: "/usr/local/bin/dropbox"
+        mode: '0755'
+
+    - name: Create systemd service for Headless Dropbox
+      copy:
+        dest: /etc/systemd/system/dropbox@.service
+        content: |
+          [Unit]
+          Description=Dropbox as a systemd service
+          After=network.target
+
+          [Service]
+          Type=simple
+          ExecStart=/home/%i/.dropbox-dist/dropboxd
+          Restart=on-failure
+          User=%i
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Enable and start Dropbox systemd service
+      systemd:
+        name: "dropbox@{{ dropbox_user }}.service"
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+    - name: Output instructions for linking Dropbox
+      debug:
+        msg: |
+          Dropbox daemon has been started! 
+          To link your account, run the following command as your user:
+          /usr/local/bin/dropbox status
+          
+          It will give you a URL to visit and authorize this test server.
+          Once authorized, you can run 'docker compose up -d' in the hermesDIL repo!
