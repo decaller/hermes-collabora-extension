@@ -63,9 +63,9 @@ The frontend logic is contained in a single JavaScript extension file.
 
 ## AI Installation Prompt
 
-Want to install this extension automatically? Just copy and paste this prompt into your Hermes chat and let your AI agent do the heavy lifting:
+Want to install this extension automatically? Just copy and paste this prompt into your AI assistant chat and let your agent do the heavy lifting:
 
-> "@Hermes, please install the Hermes Collabora Extension for me. Download `docker-compose.collabora.yml` and `wopi_server.py` from this repository into my current project root. Then, copy `collabora-viewer.js` to my `~/.hermes/extensions/` directory. Once the files are in place, spin up the backend by running `docker compose -f docker-compose.collabora.yml up -d`. Let me know when it's done so I can reload the page!"
+> "Please install the Collabora Extension for me. First, check if I have Docker and Docker Compose installed as they are prerequisites. If not, help me install them. Next, download `docker-compose.collabora.yml` and `wopi_server.py` from this repository (`<YOUR_REPO_URL_HERE>`) into my current project root. Then, copy `collabora-viewer.js` to my `~/.hermes/extensions/` directory. Once the files are in place, spin up the backend by running `docker compose -f docker-compose.collabora.yml up -d`. Let me know when it's done so I can reload the page!"
 
 ## Architecture
 
