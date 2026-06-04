@@ -27,5 +27,3 @@ This document outlines the series of cascading failures encountered during the d
 **Root Cause**: The healthcheck command in `docker-compose.yml` was configured as `curl -sf http://localhost:8642/v1/models`. Because we secured the API server with an `API_SERVER_KEY`, the endpoint returned `HTTP 401 Unauthorized`. The `-f` (fail) flag in `curl` caused it to return a non-zero exit code upon encountering an HTTP error, failing the Docker healthcheck.
 **Resolution**: Updated `docker-compose.yml` to ping the unauthenticated `http://localhost:8642/health` endpoint instead.
 
-## Conclusion
-All containers (`hermes`, `hermes-webui`, `libreoffice-mcp`, `collabora`, and `wopi-server`) are now successfully running and healthy. The WebUI is securely communicating with the agent API.
