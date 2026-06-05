@@ -27,3 +27,16 @@ This document outlines the series of cascading failures encountered during the d
 **Root Cause**: The healthcheck command in `docker-compose.yml` was configured as `curl -sf http://localhost:8642/v1/models`. Because we secured the API server with an `API_SERVER_KEY`, the endpoint returned `HTTP 401 Unauthorized`. The `-f` (fail) flag in `curl` caused it to return a non-zero exit code upon encountering an HTTP error, failing the Docker healthcheck.
 **Resolution**: Updated `docker-compose.yml` to ping the unauthenticated `http://localhost:8642/health` endpoint instead.
 
+## 5. Headless Dropbox Setup and Status
+**Symptom**: The Dropbox daemon on the remote test server was running but remained unlinked.
+**Resolution**:
+1. Run `/usr/local/bin/dropbox status` to obtain the authentication link.
+2. Link the daemon to the user's account (`Harridi Ilman`).
+3. **Current Status**:
+   - **Service**: `dropbox@root.service` is `active (running)`.
+   - **Sync Status**: Currently in `Indexing...` phase, processing folders.
+   - **Local Path**: `/root/Dropbox`
+   - **Selective Sync Rules Applied**:
+     - Synced only: folders named `ibu`, `yatik`, and starting with `PT. DIL` (or `PT.DIL` / `PT. Dil`).
+     - Excluded: 54 other top-level directories (e.g. `projects`, `coding`, `ebook`, `organisasi`, etc.).
+     - Ignore Rules: Configured `/root/Dropbox/rules.dropboxignore` to prevent download of binary file extensions (executables, archives, and audio/video files).
