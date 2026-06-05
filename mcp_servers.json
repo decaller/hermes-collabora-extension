@@ -6,9 +6,9 @@
         "exec",
         "-i",
         "libreoffice-mcp",
-        "fastmcp",
+        "/venv/bin/mcp",
         "run",
-        "/app/libreoffice.py"
+        "/app/libreoffice.py:mcp"
       ]
     }
   }
