@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "libreoffice-networked": {
+      "url": "http://libreoffice-mcp:8000/sse"
+    }
+  }
+}

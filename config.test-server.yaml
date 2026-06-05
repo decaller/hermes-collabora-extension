@@ -1,0 +1,34 @@
+_config_version: 26
+agent:
+  api_max_retries: 3
+  clarify_timeout: 600
+  disabled_toolsets: []
+  environment_hint: ''
+  environment_probe: true
+  gateway_auto_continue_freshness: 3600
+  gateway_notify_interval: 180
+  gateway_timeout: 1800
+  gateway_timeout_warning: 900
+  image_input_mode: auto
+  max_turns: 60
+  reasoning_effort: medium
+  restart_drain_timeout: 180
+  service_tier: ''
+  task_completion_guidance: true
+  tool_use_enforcement: auto
+  verbose: false
+approvals:
+  cron_mode: deny
+  destructive_slash_confirm: true
+  mcp_reload_confirm: true
+  mode: manual
+  timeout: 60
+model:
+  base_url: https://openagentic.id/api/v1
+  default: claude-sonnet-4.5
+  provider: openai-api
+
+mcp_servers:
+  libreoffice-networked:
+    url: http://172.28.0.1:8000/sse
+    enabled: true
