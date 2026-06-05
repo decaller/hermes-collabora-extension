@@ -18,6 +18,16 @@ class WOPIHandler(BaseHTTPRequestHandler):
             return abs_path, is_contents
         return None, False
 
+    def send_cors_headers(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-WOPI-Size')
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_cors_headers()
+        self.end_headers()
+
     def do_GET(self):
         abs_path, is_contents = self.get_file_info(self.path)
         if abs_path:
@@ -36,6 +46,7 @@ class WOPIHandler(BaseHTTPRequestHandler):
                     }
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json')
+                    self.send_cors_headers()
                     self.end_headers()
                     self.wfile.write(json.dumps(info).encode('utf-8'))
                     return
@@ -45,14 +56,65 @@ class WOPIHandler(BaseHTTPRequestHandler):
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/octet-stream')
                     self.send_header('Content-Length', str(size))
+                    self.send_cors_headers()
                     self.end_headers()
                     with open(abs_path, 'rb') as f:
                         self.wfile.write(f.read())
                     return
         self.send_response(404)
+        self.send_cors_headers()
         self.end_headers()
 
     def do_POST(self):
+        parsed_url = urllib.parse.urlparse(self.path)
+        if parsed_url.path == '/create':
+            query = urllib.parse.parse_qs(parsed_url.query)
+            name = query.get('name', [None])[0]
+            file_type = query.get('type', [None])[0]
+            if not name or not file_type:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.send_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Missing name or type"}).encode('utf-8'))
+                return
+            
+            target_path = os.path.join('/workspace', name)
+            template_path = os.path.join('/workspace/.templates', f'blank.{file_type}')
+            
+            if os.path.exists(target_path):
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.send_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "File already exists"}).encode('utf-8'))
+                return
+                
+            if not os.path.exists(template_path):
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.send_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": f"Template not found for type: {file_type}"}).encode('utf-8'))
+                return
+                
+            try:
+                import shutil
+                shutil.copyfile(template_path, target_path)
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": True}).encode('utf-8'))
+                return
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.send_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+                return
+
         abs_path, is_contents = self.get_file_info(self.path)
         if abs_path and is_contents:
             content_len = int(self.headers.get('X-WOPI-Size', self.headers.get('Content-Length', 0)))
@@ -60,9 +122,11 @@ class WOPIHandler(BaseHTTPRequestHandler):
             with open(abs_path, 'wb') as f:
                 f.write(data)
             self.send_response(200)
+            self.send_cors_headers()
             self.end_headers()
             return
         self.send_response(404)
+        self.send_cors_headers()
         self.end_headers()
 
 if __name__ == '__main__':
