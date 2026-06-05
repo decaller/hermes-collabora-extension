@@ -1,0 +1,214 @@
+---
+- name: Setup Hermes Hybrid Native Stack
+  hosts: all
+  become: yes
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    project_root: "/root/Project/hermesDIL"
+    hermes_data_dir: "/root/.hermes"
+    workspace_dir: "/root/Dropbox"
+    python_version: "3.11"
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Stop and remove old Docker containers if they exist
+      shell: docker compose down || true
+      args:
+        chdir: "{{ project_root }}"
+      ignore_errors: yes
+
+    - name: Install native dependencies
+      apt:
+        name:
+          - python3-pip
+          - python3-venv
+          - libreoffice
+          - libreoffice-script-provider-python
+          - fonts-dejavu-core
+          - fonts-liberation
+          - curl
+          - git
+          - tini
+        state: present
+
+    - name: Install uv for fast python environment management
+      shell: curl -LsSf https://astral.sh/uv/install.sh | sh
+      args:
+        creates: /root/.cargo/bin/uv
+
+    - name: Ensure .bashrc contains uv path
+      lineinfile:
+        path: /root/.bashrc
+        line: 'export PATH="$PATH:/root/.cargo/bin"'
+        state: present
+
+    # ---------------------------------------------------------
+    # Prepare Python Environments
+    # ---------------------------------------------------------
+    - name: Create venv for LibreOffice MCP
+      shell: /root/.cargo/bin/uv venv /opt/libreoffice-mcp-venv --python {{ python_version }} --system-site-packages
+      args:
+        creates: /opt/libreoffice-mcp-venv
+
+    - name: Install LibreOffice MCP requirements
+      shell: /root/.cargo/bin/uv pip install -r {{ project_root }}/libreoffice-mcp/requirements.txt fastapi uvicorn "mcp[cli]" a2wsgi
+      args:
+        executable: /bin/bash
+      environment:
+        VIRTUAL_ENV: "/opt/libreoffice-mcp-venv"
+
+    - name: Create venv for WOPI Server
+      shell: /root/.cargo/bin/uv venv /opt/wopi-server-venv --python {{ python_version }}
+      args:
+        creates: /opt/wopi-server-venv
+
+    - name: Create venv for Hermes Agent & WebUI (if not using pre-built binaries)
+      # Assuming we run them via pip for simplicity in this hybrid model
+      shell: /root/.cargo/bin/uv venv /opt/hermes-venv --python {{ python_version }}
+      args:
+        creates: /opt/hermes-venv
+
+    - name: Install Hermes Agent and WebUI
+      shell: /root/.cargo/bin/uv pip install hermes-agent hermes-webui
+      args:
+        executable: /bin/bash
+      environment:
+        VIRTUAL_ENV: "/opt/hermes-venv"
+
+    # ---------------------------------------------------------
+    # Systemd Services
+    # ---------------------------------------------------------
+    - name: Create systemd service for LibreOffice MCP
+      copy:
+        dest: /etc/systemd/system/libreoffice-mcp.service
+        content: |
+          [Unit]
+          Description=LibreOffice MCP Server
+          After=network.target
+
+          [Service]
+          Type=simple
+          WorkingDirectory={{ project_root }}/libreoffice-mcp
+          Environment=VIRTUAL_ENV=/opt/libreoffice-mcp-venv
+          Environment=PATH=/opt/libreoffice-mcp-venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          Environment=PYTHONPATH="/usr/lib/python3/dist-packages:/usr/lib/libreoffice/program"
+          Environment=LIBREOFFICE_OUTPUT_DIR={{ workspace_dir }}
+          ExecStartPre=/usr/bin/soffice --headless --accept="socket,host=localhost,port=2083;urp;" --nodefault --nologo --nofirststartwizard &
+          ExecStart=/opt/libreoffice-mcp-venv/bin/python libreoffice.py
+          Restart=always
+          User=root
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Create systemd service for WOPI Server
+      copy:
+        dest: /etc/systemd/system/wopi-server.service
+        content: |
+          [Unit]
+          Description=WOPI Server for Collabora
+          After=network.target
+
+          [Service]
+          Type=simple
+          WorkingDirectory={{ project_root }}/hermes-collabora-extension
+          ExecStart=/opt/wopi-server-venv/bin/python wopi_server.py
+          Restart=always
+          User=root
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Create systemd service for Hermes Agent
+      copy:
+        dest: /etc/systemd/system/hermes-agent.service
+        content: |
+          [Unit]
+          Description=Hermes Agent
+          After=network.target
+
+          [Service]
+          Type=simple
+          WorkingDirectory={{ project_root }}
+          Environment=HERMES_DATA_DIR={{ hermes_data_dir }}
+          Environment=WORKSPACE_DIR={{ workspace_dir }}
+          ExecStart=/opt/hermes-venv/bin/hermes gateway run
+          Restart=always
+          User=root
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Create systemd service for Hermes WebUI
+      copy:
+        dest: /etc/systemd/system/hermes-webui.service
+        content: |
+          [Unit]
+          Description=Hermes WebUI
+          After=hermes-agent.service
+
+          [Service]
+          Type=simple
+          WorkingDirectory={{ project_root }}
+          Environment=HERMES_AGENT_URL=http://localhost:8642/v1
+          Environment=HERMES_WEBUI_EXTENSION_DIR={{ project_root }}/hermes-collabora-extension
+          Environment=HERMES_WEBUI_EXTENSION_SCRIPT_URLS=/extensions/collabora-viewer.js
+          ExecStart=/opt/hermes-venv/bin/hermes-webui
+          Restart=always
+          User=root
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Enable and start native services
+      systemd:
+        name: "{{ item }}"
+        enabled: yes
+        state: started
+        daemon_reload: yes
+      loop:
+        - libreoffice-mcp
+        - wopi-server
+        - hermes-agent
+        - hermes-webui
+
+    # ---------------------------------------------------------
+    # Collabora Docker (The only container left)
+    # ---------------------------------------------------------
+    - name: Create Docker Compose for Collabora Only
+      copy:
+        dest: "{{ project_root }}/docker-compose.collabora-only.yml"
+        content: |
+          version: '3.8'
+          services:
+            collabora:
+              image: collabora/code:latest
+              container_name: collabora
+              restart: unless-stopped
+              ports:
+                - "9980:9980"
+              environment:
+                aliasgroups: "host=http://localhost:8787"
+                dictionaries: "en_US id_ID"
+                username: "admin"
+                password: "changeme_admin_pass"
+                DONT_GEN_SSL_CERT: "1"
+                extra_params: >-
+                  --o:ssl.enable=false
+                  --o:ssl.termination=false
+                  --o:net.frame_ancestors="http://localhost:8787"
+                  --o:logging.level=warning
+                  --o:server_name=localhost:9980
+                  --o:storage.wopi.host[0]=host.docker.internal
+                  --o:storage.wopi.alias_groups.mode=first
+              cap_add:
+                - MKNOD
+              extra_hosts:
+                - "host.docker.internal:host-gateway"
+
+    - name: Start Collabora container
+      shell: docker compose -f {{ project_root }}/docker-compose.collabora-only.yml up -d
