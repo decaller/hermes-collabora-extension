@@ -220,7 +220,6 @@ services:
     shm_size: '2gb'
     volumes:
       - ${WORKSPACE_DIR:-~/Project}:/workspace
-      - /usr/share/fonts:/usr/share/fonts:ro
       - ~/Dropbox:/Dropbox
     ports:
       - "8000:8000"
