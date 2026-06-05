@@ -58,9 +58,6 @@ services:
       # Workspace accessible inside the container
       - ${WORKSPACE_DIR:-~/Project}:/workspace
 
-      # Dropbox folder mounted inside the workspace
-      - ~/Dropbox:/workspace/Dropbox
-
       # Docker socket to allow running docker commands inside the container
       - /var/run/docker.sock:/var/run/docker.sock
 
@@ -139,9 +136,6 @@ services:
 
       # Workspace (read-only for the UI is sufficient for most use-cases)
       - ${WORKSPACE_DIR:-~/Project}:/workspace:ro
-
-      # Dropbox folder mounted inside the workspace (read-only for UI)
-      - ~/Dropbox:/workspace/Dropbox:ro
 
       # ── Extension files mount ──────────────────────────────
       # Maps the local extension file into the container
