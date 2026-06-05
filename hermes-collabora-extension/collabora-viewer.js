@@ -1,10 +1,102 @@
 (function() {
-  const collaboraUrl = 'http://localhost:9980';
+  const collaboraUrl = 'http://' + window.location.hostname + ':9980';
   const collaboraVersion = '29388df';
 
-  console.log('[Collabora] Extension v6 initialized \u2713 ', ' \u2014  Collabora at', collaboraUrl);
+  console.log('[Collabora] Extension v7 initialized \u2713 ', ' \u2014  Collabora at', collaboraUrl);
   console.log('[Collabora] Click any .docx/.xlsx/.pptx in the workspace to open here');
   window._collaDownloadPatched = true;
+
+  // Patch window.api to handle creating templates
+  if (window.api && !window._collaApiPatched) {
+    const originalApi = window.api;
+    window.api = async function(path, opts) {
+      if (path === '/api/file/create' && opts && opts.method === 'POST' && opts.body) {
+        try {
+          const body = JSON.parse(opts.body);
+          const filePath = body.path;
+          const match = filePath.match(/\.(docx|xlsx|pptx)$/i);
+          if (match) {
+            const fileType = match[1].toLowerCase();
+            console.log('[Collabora] Intercepted new file creation for office type:', fileType, filePath);
+            
+            const wopiUrl = `http://${window.location.hostname}:8880/create?name=${encodeURIComponent(filePath)}&type=${fileType}`;
+            const response = await fetch(wopiUrl, { method: 'POST' });
+            if (!response.ok) {
+              const errData = await response.json();
+              throw new Error(errData.error || 'Failed to create template file');
+            }
+            return { ok: true, path: filePath };
+          }
+        } catch (e) {
+          console.error('[Collabora] Error creating template file:', e);
+          throw e;
+        }
+      }
+      return originalApi.apply(this, arguments);
+    };
+    window._collaApiPatched = true;
+    console.log('[Collabora] window.api patched for templates \u2713');
+  }
+
+  // Inject creation buttons in the workspace panel actions bar
+  const injectDocButtons = () => {
+    const newFileBtn = document.getElementById('btnNewFile');
+    if (newFileBtn && !document.getElementById('btnNewDoc')) {
+      const createBtn = (id, tooltip, iconSvg, type, ext) => {
+        const btn = document.createElement('button');
+        btn.id = id;
+        btn.className = 'panel-icon-btn has-tooltip has-tooltip--bottom';
+        btn.setAttribute('data-tooltip', tooltip);
+        btn.innerHTML = iconSvg;
+        btn.onclick = async () => {
+          if (!window.S || !window.S.session) return;
+          const name = await window.showPromptDialog({
+            title: `New ${type}`,
+            placeholder: `filename${ext}`,
+            confirmLabel: 'Create'
+          });
+          if (!name || !name.trim()) return;
+          let filename = name.trim();
+          if (!filename.toLowerCase().endsWith(ext)) {
+            filename += ext;
+          }
+          const relPath = window.S.currentDir === '.' ? filename : (window.S.currentDir + '/' + filename);
+          try {
+            await window.api('/api/file/create', {
+              method: 'POST',
+              body: JSON.stringify({
+                session_id: window.S.session.session_id,
+                path: relPath,
+                content: ''
+              })
+            });
+            if (window.showToast) window.showToast(`Created ${filename}`);
+            if (window.loadDir) await window.loadDir(window.S.currentDir);
+            if (window.openFile) window.openFile(relPath);
+          } catch (e) {
+            if (window.setStatus) window.setStatus(`Create failed: ${e.message}`);
+          }
+        };
+        return btn;
+      };
+
+      const docIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>`;
+      const sheetIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line></svg>`;
+      const slideIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`;
+
+      const btnDoc = createBtn('btnNewDoc', 'New Document (.docx)', docIcon, 'Document', '.docx');
+      const btnSheet = createBtn('btnNewSheet', 'New Spreadsheet (.xlsx)', sheetIcon, 'Spreadsheet', '.xlsx');
+      const btnSlide = createBtn('btnNewSlide', 'New Presentation (.pptx)', slideIcon, 'Presentation', '.pptx');
+
+      newFileBtn.parentNode.insertBefore(btnDoc, newFileBtn.nextSibling);
+      btnDoc.parentNode.insertBefore(btnSheet, btnDoc.nextSibling);
+      btnSheet.parentNode.insertBefore(btnSlide, btnSheet.nextSibling);
+      console.log('[Collabora] Document buttons injected \u2713');
+    }
+  };
+
+  // Run injection on an interval to ensure buttons stay in place if DOM re-renders
+  setInterval(injectDocButtons, 1000);
   
   const init = () => {
     if (window.downloadFile && window.openFile) {

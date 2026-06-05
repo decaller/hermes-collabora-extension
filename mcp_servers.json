@@ -1,15 +1,7 @@
 {
   "mcpServers": {
-    "libreoffice-mcp": {
-      "command": "docker",
-      "args": [
-        "exec",
-        "-i",
-        "libreoffice-mcp",
-        "/venv/bin/mcp",
-        "run",
-        "/app/libreoffice.py:mcp"
-      ]
+    "libreoffice-networked": {
+      "url": "http://libreoffice-mcp:8000/sse"
     }
   }
 }

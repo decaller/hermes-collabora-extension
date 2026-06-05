@@ -30,7 +30,6 @@ services:
     image: nousresearch/hermes-agent:latest
     container_name: hermes
     restart: unless-stopped
-    command: ["gateway", "run"]
     tty: true
     stdin_open: true
 
@@ -57,6 +56,9 @@ services:
 
       # Workspace accessible inside the container
       - ${WORKSPACE_DIR:-~/Project}:/workspace
+
+      # Dropbox mount for path consistency with other services
+      - ~/Dropbox:/Dropbox
 
       # Docker socket to allow running docker commands inside the container
       - /var/run/docker.sock:/var/run/docker.sock
