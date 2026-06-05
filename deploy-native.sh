@@ -28,8 +28,6 @@ uv pip install -r $PROJECT_ROOT/libreoffice-mcp/requirements.txt fastapi uvicorn
 
 echo "Setting up WOPI Server venv..."
 uv venv /opt/wopi-server-venv --python $PYTHON_VERSION --clear
-# wopi server usually just needs standard lib or very few deps, but let's ensure it has what it needs if any
-# (The current wopi_server.py seems to use only stdlib: os, sys, json, urllib, http.server, etc.)
 
 echo "Extracting Hermes Agent source..."
 docker run --rm -v /tmp:/tmp nousresearch/hermes-agent:latest tar -czf /tmp/hermes-agent.tar.gz -C /opt hermes
@@ -44,11 +42,11 @@ rm /tmp/hermes-webui.tar.gz
 
 echo "Setting up Hermes Agent venv..."
 uv venv /opt/hermes-venv --python $PYTHON_VERSION --clear
-# Install core dependencies from pyproject.toml
 uv pip install -e /opt/hermes --python /opt/hermes-venv/bin/python
 
 echo "Setting up Hermes WebUI venv..."
 uv venv /opt/hermes-webui-venv --python $PYTHON_VERSION --clear
+uv pip install -e /opt/hermes --python /opt/hermes-webui-venv/bin/python
 uv pip install -r /opt/hermes-webui/requirements.txt --python /opt/hermes-webui-venv/bin/python
 
 echo "Configuring Systemd Services..."
@@ -105,7 +103,7 @@ WorkingDirectory=/opt/hermes
 Environment=HERMES_DATA_DIR=$HERMES_DATA_DIR
 Environment=WORKSPACE_DIR=$WORKSPACE_DIR
 Environment=PATH=/opt/hermes-venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ExecStart=/opt/hermes-venv/bin/python run_agent.py gateway run
+ExecStart=/opt/hermes-venv/bin/hermes gateway run
 Restart=always
 User=root
 
@@ -126,6 +124,7 @@ Environment=HERMES_AGENT_URL=http://localhost:8642/v1
 Environment=HERMES_WEBUI_EXTENSION_DIR=$PROJECT_ROOT/hermes-collabora-extension
 Environment=HERMES_WEBUI_EXTENSION_SCRIPT_URLS=/extensions/collabora-viewer.js
 Environment=PATH=/opt/hermes-webui-venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=PYTHONPATH=/opt/hermes
 ExecStart=/opt/hermes-webui-venv/bin/python server.py
 Restart=always
 User=root
