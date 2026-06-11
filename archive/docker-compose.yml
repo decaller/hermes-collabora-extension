@@ -1,0 +1,239 @@
+---
+# ============================================================
+#  Hermes AI Agent Stack — docker-compose.yml
+#  Includes: Hermes Agent + Hermes WebUI + Collabora Online
+#
+#  Updated: 2026-06-04
+#  Changes from initial version:
+#    - Added `collabora` service (LibreOffice Online)
+#    - Added Collabora Online extension for hermes-webui
+#    - Fixed inter-container networking (service DNS, not host gateway IP)
+#    - Added extension volume mount + env vars to hermes-webui
+#    - Added resource limits per official three-container template
+#
+#  Usage:
+#    docker compose up -d
+#    docker compose logs -f
+#    docker compose down
+#
+#  Environment:
+#    Copy .env.example to .env and set HERMES_DATA_DIR, WORKSPACE_DIR.
+#    API keys live in ~/.hermes/.env (not here).
+# ============================================================
+
+services:
+
+  # ----------------------------------------------------------
+  # Hermes Agent — Core AI gateway + OpenAI-compatible API
+  # ----------------------------------------------------------
+  hermes:
+    image: nousresearch/hermes-agent:latest
+    container_name: hermes
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+
+    ports:
+      - "127.0.0.1:8642:8642"   # OpenAI-compatible REST API (localhost only)
+      - "127.0.0.1:9119:9119"   # Built-in Hermes dashboard (localhost only)
+
+    environment:
+      # Dashboard settings
+      HERMES_DASHBOARD: "true"
+      HERMES_DASHBOARD_HOST: "0.0.0.0"
+      HERMES_DASHBOARD_INSECURE: "true"
+
+      # User/group mapping (match your host UID/GID — run: id -u && id -g)
+      HERMES_UID: "10000"
+      HERMES_GID: "10000"
+
+      # Runtime
+      PYTHONUNBUFFERED: "1"
+
+    volumes:
+      # Hermes data directory (config, DB, cache, memories, skills, etc.)
+      - ${HERMES_DATA_DIR:-~/.hermes}:/opt/data
+
+      # Workspace accessible inside the container
+      - ${WORKSPACE_DIR:-~/Project}:/workspace
+
+      # Dropbox mount for path consistency with other services
+      - ~/Dropbox:/Dropbox
+
+      # Docker socket to allow running docker commands inside the container
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    networks:
+      - hermes-net
+
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8642/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2.0"
+
+  # ----------------------------------------------------------
+  # Hermes Web UI — Browser chat interface
+  # ----------------------------------------------------------
+  hermes-webui:
+    image: ghcr.io/nesquena/hermes-webui:latest
+    container_name: hermes-webui
+    restart: unless-stopped
+
+    depends_on:
+      hermes:
+        condition: service_healthy
+
+    ports:
+      - "8787:8787"   # Web UI (exposed on all interfaces — set password if needed)
+
+    environment:
+      # Web server binding
+      HERMES_WEBUI_HOST: "0.0.0.0"
+      HERMES_WEBUI_PORT: "8787"
+
+      # ──────────────────────────────────────────────────────
+      # Connect to the hermes agent via named network DNS
+      # (was: http://172.17.0.1:8642/v1 — fragile host IP)
+      # ──────────────────────────────────────────────────────
+      HERMES_AGENT_URL: "http://hermes:8642/v1"
+
+      # Data directories
+      HERMES_HOME: "/home/hermeswebui/.hermes"
+      HERMES_WEBUI_STATE_DIR: "/home/hermeswebui/.hermes/webui"
+      HERMES_WEBUI_AGENT_DIR: "/home/hermeswebui/.hermes/hermes-agent"
+
+      # User/group mapping
+      WANTED_UID: "10000"
+      WANTED_GID: "10000"
+
+      # ──────────────────────────────────────────────────────
+      # Collabora Online Extension injection
+      # The extension dir is mounted at /extensions inside the container.
+      # Scripts are served at /extensions/<filename> and injected into
+      # every page load via <script defer> tags before </body>.
+      # ──────────────────────────────────────────────────────
+      HERMES_WEBUI_EXTENSION_DIR: "/extensions"
+      HERMES_WEBUI_EXTENSION_SCRIPT_URLS: "/extensions/collabora-viewer.js"
+      HERMES_WEBUI_EXTENSION_STYLESHEET_URLS: "/extensions/collabora-viewer.css"
+
+      # Runtime
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONIOENCODING: "utf-8"
+
+      # Optional: Set a password for remote access
+      # HERMES_WEBUI_PASSWORD: "your-secret-password"
+
+    volumes:
+      # Same Hermes data directory as the agent — shared state
+      - ${HERMES_DATA_DIR:-~/.hermes}:/home/hermeswebui/.hermes
+
+      # Workspace (read-only for the UI is sufficient for most use-cases)
+      - ${WORKSPACE_DIR:-~/Project}:/workspace:ro
+
+      # ── Extension files mount ──────────────────────────────
+      # Maps the local extension file into the container
+      # ──────────────────────────────────────────────────────
+      - ./hermes-collabora-extension/collabora-viewer.js:/extensions/collabora-viewer.js:ro
+
+    networks:
+      - hermes-net
+
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8787/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+
+
+  # ----------------------------------------------------------
+  # WOPI Server — Python backend for Collabora filesystem access
+  # ----------------------------------------------------------
+  wopi-server:
+    image: python:3.11-alpine
+    container_name: wopi-server
+    restart: unless-stopped
+    volumes:
+      - ${WORKSPACE_DIR:-~/Project}:/workspace
+      - ./hermes-collabora-extension/wopi_server.py:/wopi_server.py
+    command: python3 /wopi_server.py
+    ports:
+      - "8880:8880"
+    networks:
+      - hermes-net
+
+  # ----------------------------------------------------------
+  # Collabora CODE — LibreOffice online document editor
+  # ----------------------------------------------------------
+  collabora:
+    image: collabora/code:latest
+    container_name: collabora
+    restart: unless-stopped
+    ports:
+      - "9980:9980"
+    environment:
+      aliasgroups: "host=http://localhost:8787|host=http://hermes-webui:8787"
+      dictionaries: "en_US id_ID"
+      username: "admin"
+      password: "changeme_admin_pass"
+      DONT_GEN_SSL_CERT: "1"
+      extra_params: >-
+        --o:ssl.enable=false
+        --o:ssl.termination=false
+        --o:net.frame_ancestors="http://localhost:8787 http://hermes-webui:8787"
+        --o:logging.level=warning
+        --o:server_name=localhost:9980
+        --o:storage.wopi.host[0]=wopi-server
+        --o:storage.wopi.alias_groups.mode=first
+    cap_add:
+      - MKNOD
+    networks:
+      - hermes-net
+
+  # ----------------------------------------------------------
+  # LibreOffice MCP Server — AI agent connector for LibreOffice
+  # ----------------------------------------------------------
+  libreoffice-mcp:
+    build:
+      context: ./libreoffice-mcp
+    container_name: libreoffice-mcp
+    restart: unless-stopped
+    shm_size: '2gb'
+    volumes:
+      - ${WORKSPACE_DIR:-~/Project}:/workspace
+      - ~/Dropbox:/Dropbox
+    ports:
+      - "8000:8000"
+    networks:
+      - hermes-net
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+# ----------------------------------------------------------
+# Networks
+# ----------------------------------------------------------
+networks:
+  hermes-net:
+    name: hermes-net
+    driver: bridge
+    # Explicit subnet to avoid conflicts with existing networks
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

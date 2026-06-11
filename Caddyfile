@@ -1,0 +1,43 @@
+# ==============================================================================
+#  Caddy Reverse Proxy Configuration — Caddyfile
+#  Manages routing, automatic SSL, and CSP security headers.
+# ==============================================================================
+
+# Global configuration options (optional)
+{
+    email info@dianinsanlestari.co.id
+}
+
+# 1. Hermes WebUI Domain
+{$HERMES_DOMAIN:hermes.dianinsanlestari.co.id} {
+    # Route WOPI API calls directly to the wopi-server container
+    reverse_proxy /wopi/* wopi-server:8880
+
+    # Route all other WebUI traffic to the hermes-webui container
+    reverse_proxy hermes-webui:8787
+
+    # Inject Content-Security-Policy (CSP) headers to allow framing Collabora
+    header {
+        # Allow framing of same-origin, blob: sources, and the Collabora subdomain
+        Content-Security-Policy "frame-src 'self' blob: https://{$COLLABORA_DOMAIN:collabora.dianinsanlestari.co.id}"
+        
+        # Disable default X-Frame-Options header so that custom framing rules apply
+        -X-Frame-Options
+        X-Frame-Options "SAMEORIGIN"
+        
+        # Enable HTTP Strict Transport Security (HSTS)
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    }
+}
+
+# 2. Collabora CODE Domain
+{$COLLABORA_DOMAIN:collabora.dianinsanlestari.co.id} {
+    # Proxy to Collabora CODE container (port 9980)
+    reverse_proxy collabora:9980 {
+        # WebSocket support and headers are automatically handled by Caddy
+        header_up Host {upstream_hostport}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}

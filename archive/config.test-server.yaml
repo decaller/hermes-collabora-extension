@@ -9,7 +9,7 @@ agent:
   gateway_notify_interval: 180
   gateway_timeout: 1800
   gateway_timeout_warning: 900
-  image_input_mode: auto
+  image_input_mode: native
   max_turns: 60
   reasoning_effort: medium
   restart_drain_timeout: 180

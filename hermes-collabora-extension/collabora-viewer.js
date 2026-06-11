@@ -1,9 +1,10 @@
 (function() {
-  const collaboraUrl = 'http://' + window.location.hostname + ':9980';
-  const collaboraVersion = '29388df';
+  // Cloudflare Access CSP now allows framing the subdomain directly.
+  const collaboraUrl = 'https://collabora.dianinsanlestari.co.id';
+  const collaboraVersion = 'f0f0f2a66a';
 
-  console.log('[Collabora] Extension v7 initialized \u2713 ', ' \u2014  Collabora at', collaboraUrl);
-  console.log('[Collabora] Click any .docx/.xlsx/.pptx in the workspace to open here');
+  console.log('[Collabora] Extension v11 (subdomain) initialized ✓ ', ' —  Collabora at', collaboraUrl);
+  console.log('[Collabora] Opening documents via subdomain and /wopi on', window.location.host);
   window._collaDownloadPatched = true;
 
   // Patch window.api to handle creating templates
@@ -14,12 +15,12 @@
         try {
           const body = JSON.parse(opts.body);
           const filePath = body.path;
-          const match = filePath.match(/\.(docx|xlsx|pptx)$/i);
+          const match = filePath.match(/\.(docx|xlsx|pptx|doc|xls|ppt|odt|ods|odp)$/i);
           if (match) {
             const fileType = match[1].toLowerCase();
             console.log('[Collabora] Intercepted new file creation for office type:', fileType, filePath);
             
-            const wopiUrl = `http://${window.location.hostname}:8880/create?name=${encodeURIComponent(filePath)}&type=${fileType}`;
+            const wopiUrl = window.location.origin + '/wopi/create?name=' + encodeURIComponent(filePath) + '&type=' + fileType;
             const response = await fetch(wopiUrl, { method: 'POST' });
             if (!response.ok) {
               const errData = await response.json();
@@ -35,7 +36,7 @@
       return originalApi.apply(this, arguments);
     };
     window._collaApiPatched = true;
-    console.log('[Collabora] window.api patched for templates \u2713');
+    console.log('[Collabora] window.api patched for templates ✓');
   }
 
   // Inject creation buttons in the workspace panel actions bar
@@ -91,11 +92,10 @@
       newFileBtn.parentNode.insertBefore(btnDoc, newFileBtn.nextSibling);
       btnDoc.parentNode.insertBefore(btnSheet, btnDoc.nextSibling);
       btnSheet.parentNode.insertBefore(btnSlide, btnSheet.nextSibling);
-      console.log('[Collabora] Document buttons injected \u2713');
+      console.log('[Collabora] Document buttons injected ✓');
     }
   };
 
-  // Run injection on an interval to ensure buttons stay in place if DOM re-renders
   setInterval(injectDocButtons, 1000);
   
   const init = () => {
@@ -104,7 +104,7 @@
       const originalOpen = window.openFile;
       
       const handleColla = (path, originalFn, args, thisArg) => {
-        if (path.match(/\.(docx|xlsx|pptx|csv)$/i)) {
+        if (path.match(/\.(docx|doc|xlsx|xls|pptx|ppt|odt|ods|odp|csv)$/i)) {
           console.log('[Collabora] Intercepted click on:', path);
           
           const workspace = document.querySelector('.rail').nextElementSibling;
@@ -139,7 +139,7 @@
               if (!isResizing) return;
               previewPane.style.flex = 'none';
               const newWidth = window.innerWidth - e.clientX;
-              previewPane.style.width = `${newWidth}px`;
+              previewPane.style.width = Math.max(200, newWidth) + 'px';
             });
             window.addEventListener('mouseup', () => {
               if (isResizing) {
@@ -187,9 +187,6 @@
           fullWidthBtn.style.borderRadius = '6px';
           fullWidthBtn.style.cursor = 'pointer';
           fullWidthBtn.style.fontSize = '13px';
-          fullWidthBtn.style.transition = 'background-color 0.2s';
-          fullWidthBtn.onmouseover = () => fullWidthBtn.style.backgroundColor = '#313244';
-          fullWidthBtn.onmouseout = () => fullWidthBtn.style.backgroundColor = 'transparent';
           
           let isFullWidth = false;
           let hiddenElements = [];
@@ -203,9 +200,6 @@
           nativeBtn.style.borderRadius = '6px';
           nativeBtn.style.cursor = 'pointer';
           nativeBtn.style.fontSize = '13px';
-          nativeBtn.style.transition = 'background-color 0.2s';
-          nativeBtn.onmouseover = () => nativeBtn.style.backgroundColor = '#313244';
-          nativeBtn.onmouseout = () => nativeBtn.style.backgroundColor = 'transparent';
           
           nativeBtn.onclick = () => {
             if (previewPane && previewPane.parentElement) {
@@ -250,15 +244,12 @@
           closeBtn.style.borderRadius = '6px';
           closeBtn.style.cursor = 'pointer';
           closeBtn.style.fontSize = '13px';
-          closeBtn.style.transition = 'background-color 0.2s';
-          closeBtn.onmouseover = () => closeBtn.style.backgroundColor = '#313244';
-          closeBtn.onmouseout = () => closeBtn.style.backgroundColor = 'transparent';
           
           closeBtn.onclick = () => {
             if (previewPane && previewPane.parentElement) {
               previewPane.parentElement.removeChild(previewPane);
               if (resizer && resizer.parentElement) resizer.parentElement.removeChild(resizer);
-              workspace.style.display = ''; // Make sure workspace is visible if closed from full width
+              workspace.style.display = ''; 
             }
           };
 
@@ -273,10 +264,9 @@
           iframe.style.width = '100%';
           iframe.style.border = 'none';
           
-          // Use WOPI backend
           const fileId = encodeURIComponent(path);
-          const wopiSrc = encodeURIComponent('http://wopi-server:8880/wopi/files/' + fileId);
-          iframe.src = `${collaboraUrl}/browser/${collaboraVersion}/cool.html?WOPISrc=${wopiSrc}`;
+          const wopiSrc = encodeURIComponent(window.location.origin + '/wopi/files/' + fileId);
+          iframe.src = collaboraUrl + '/browser/' + collaboraVersion + '/cool.html?WOPISrc=' + wopiSrc;
           
           previewPane.appendChild(header);
           previewPane.appendChild(iframe);
@@ -293,7 +283,7 @@
         return handleColla(path, originalOpen, arguments, this);
       };
 
-      console.log('[Collabora] File handlers patched \u2713');
+      console.log('[Collabora] File handlers patched ✓');
     } else {
       setTimeout(init, 500);
     }

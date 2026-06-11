@@ -1,0 +1,134 @@
+---
+# ==============================================================================
+#  Ansible Playbook: Deploy Hermes AI Agent & Collabora Stack
+# ==============================================================================
+
+- name: Deploy Hermes Collabora Docker Stack
+  hosts: test_server
+  become: yes
+  vars:
+    project_root: "/opt/hermesDIL"
+    hermes_data_dir: "/opt/hermesDIL/data"
+    workspace_dir: "/opt/hermesDIL/workspace"
+    domain_hermes: "hermes.dianinsanlestari.co.id"
+    domain_collabora: "collabora.dianinsanlestari.co.id"
+
+  tasks:
+    - name: Ensure prerequisite packages are installed
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - rsync
+        state: present
+        update_cache: yes
+
+    - name: Check if Docker GPG key exists
+      stat:
+        path: /usr/share/keyrings/docker-archive-keyring.gpg
+      register: docker_gpg
+
+    - name: Add Docker GPG key
+      shell: |
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+      when: not docker_gpg.stat.exists
+
+    - name: Add Docker Repository
+      apt_repository:
+        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+
+    - name: Install Docker and Docker Compose Plugin
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Ensure Docker service is enabled and running
+      systemd:
+        name: docker
+        enabled: yes
+        state: started
+
+    # --------------------------------------------------------------------------
+    # Directory Setup
+    # --------------------------------------------------------------------------
+    - name: Create project root directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - "{{ project_root }}"
+        - "{{ project_root }}/libreoffice-mcp"
+        - "{{ project_root }}/hermes-collabora-extension"
+        - "{{ hermes_data_dir }}"
+        - "{{ workspace_dir }}"
+
+    # --------------------------------------------------------------------------
+    # Copy/Sync Project Files
+    # --------------------------------------------------------------------------
+    - name: Synchronize project files to remote server
+      synchronize:
+        src: "{{ playbook_dir }}/{{ item }}"
+        dest: "{{ project_root }}/{{ item }}"
+        recursive: yes
+        delete: yes
+      loop:
+        - libreoffice-mcp
+        - hermes-collabora-extension
+
+    - name: Copy deployment files
+      copy:
+        src: "{{ playbook_dir }}/{{ item }}"
+        dest: "{{ project_root }}/{{ item }}"
+        mode: '0644'
+      loop:
+        - docker-compose.yml
+        - Caddyfile
+        - mcp_servers.json
+
+    - name: Ensure mcp_servers.json is inside the agent data directory
+      copy:
+        src: "{{ playbook_dir }}/mcp_servers.json"
+        dest: "{{ hermes_data_dir }}/mcp_servers.json"
+        mode: '0644'
+
+    # --------------------------------------------------------------------------
+    # Configuration & Env Setup
+    # --------------------------------------------------------------------------
+    - name: Write .env file for Docker Compose
+      copy:
+        dest: "{{ project_root }}/.env"
+        content: |
+          HERMES_DATA_DIR={{ hermes_data_dir }}
+          WORKSPACE_DIR={{ workspace_dir }}
+          HERMES_DOMAIN={{ domain_hermes }}
+          COLLABORA_DOMAIN={{ domain_collabora }}
+          COLLABORA_ADMIN_PASSWORD=changeme_admin_pass
+        mode: '0600'
+
+    # --------------------------------------------------------------------------
+    # Run the Stack
+    # --------------------------------------------------------------------------
+    - name: Stop running container stack if active
+      shell: docker compose down --remove-orphans
+      args:
+        chdir: "{{ project_root }}"
+      ignore_errors: yes
+
+    - name: Start container stack and build images
+      shell: docker compose up -d --build
+      args:
+        chdir: "{{ project_root }}"
